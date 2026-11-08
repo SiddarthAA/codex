@@ -20,6 +20,7 @@ use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::UserInput;
 use codex_protocol::ThreadId;
 use codex_protocol::items::UserMessageItem;
+use codex_protocol::models::MessagePhase;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use ratatui::style::Stylize as _;
 
@@ -110,6 +111,23 @@ pub(crate) fn thread_to_transcript_cells(
                 raw_reasoning_visibility,
                 config,
             );
+            if turn.status == codex_app_server_protocol::TurnStatus::Completed
+                && let Some(index) = cells.iter().rposition(|cell| {
+                    cell.as_any()
+                        .downcast_ref::<AgentMarkdownCell>()
+                        .is_some_and(AgentMarkdownCell::is_final_answer)
+                })
+            {
+                let range = crate::history_cell::completed_activity_range(&cells, index);
+                if !range.is_empty() {
+                    let activity: Arc<dyn HistoryCell> =
+                        Arc::new(crate::history_cell::IntermediateActivityCell::new(
+                            &turn.id,
+                            cells[range.clone()].to_vec(),
+                        ));
+                    cells.splice(range, [activity]);
+                }
+            }
             if let Some(error) = turn.error {
                 cells.push(Arc::new(crate::history_cell::new_error_event(
                     error.message,
@@ -275,7 +293,10 @@ fn item_to_cells(
             cells.push(Arc::new(cell.with_async_replies(replies, cwd.as_path())));
         }
         ThreadItemPayload::AgentMessage {
-            text, questions, ..
+            text,
+            questions,
+            phase,
+            ..
         } => {
             let parsed = parse_assistant_markdown(&text, cwd.as_path());
             if !parsed.visible_markdown.trim().is_empty() {
@@ -284,6 +305,10 @@ fn item_to_cells(
                         parsed.visible_markdown,
                         cwd.as_path(),
                         inline_visualization_context,
+                    )
+                    .with_final_answer(
+                        matches!(phase, Some(MessagePhase::FinalAnswer))
+                            || phase.is_none() && questions.as_ref().is_none_or(Vec::is_empty),
                     )
                     .with_questions(questions.as_deref().unwrap_or_default()),
                 ));

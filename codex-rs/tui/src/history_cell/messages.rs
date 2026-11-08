@@ -576,6 +576,7 @@ pub(crate) struct AgentMarkdownCell {
     rendered_lines: Option<MarkdownRenderCache>,
     spoken_artifacts: bool,
     question_titles: Vec<std::ops::Range<usize>>,
+    final_answer: bool,
 }
 
 impl AgentMarkdownCell {
@@ -616,7 +617,30 @@ impl AgentMarkdownCell {
             rendered_lines,
             spoken_artifacts: false,
             question_titles: Vec::new(),
+            final_answer: false,
         }
+    }
+
+    pub(crate) fn with_final_answer(mut self, final_answer: bool) -> Self {
+        self.final_answer = final_answer;
+        self
+    }
+
+    pub(crate) fn is_final_answer(&self) -> bool {
+        self.final_answer
+    }
+
+    pub(crate) fn finalized(&self) -> Self {
+        let mut cell = Self::new_with_inline_visualizations(
+            self.markdown_source.clone(),
+            &self.cwd,
+            self.inline_visualization_context.clone(),
+        );
+        cell.copy_source = self.copy_source.clone();
+        cell.question_titles = self.question_titles.clone();
+        cell.spoken_artifacts = self.spoken_artifacts;
+        cell.final_answer = true;
+        cell
     }
 
     pub(crate) fn with_questions(
@@ -699,7 +723,18 @@ impl AgentMarkdownCell {
                     markdown,
                 )
             };
-            normalize_whitespace_only_hyperlink_lines(lines)
+            let mut lines = normalize_whitespace_only_hyperlink_lines(lines);
+            if self.final_answer && width > 0 && !lines.is_empty() {
+                lines.splice(
+                    0..0,
+                    plain_hyperlink_lines(vec![
+                        Line::from("─".repeat(usize::from(width))),
+                        Line::from("Final answer".bold()),
+                        Line::default(),
+                    ]),
+                );
+            }
+            lines
         };
 
         if let Some(rendered_lines) = &self.rendered_lines {

@@ -18,6 +18,33 @@ use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
 
 #[test]
+fn collapsing_activity_preserves_the_exported_transcript() {
+    let activity: Vec<Arc<dyn HistoryCell>> = vec![
+        Arc::new(AgentMarkdownCell::new(
+            "Checking **the files**.".into(),
+            std::path::Path::new("."),
+        )),
+        Arc::new(PlainHistoryCell::new(vec!["$ cargo test".into()])),
+    ];
+    let answer: Arc<dyn HistoryCell> = Arc::new(AgentMarkdownCell::new(
+        "Done.".into(),
+        std::path::Path::new("."),
+    ));
+    let mut original = activity.clone();
+    original.push(answer.clone());
+    let collapsed: Vec<Arc<dyn HistoryCell>> = vec![
+        Arc::new(crate::history_cell::IntermediateActivityCell::new(
+            "turn-one", activity,
+        )),
+        answer,
+    ];
+    assert_eq!(
+        render_markdown_transcript(&collapsed),
+        render_markdown_transcript(&original),
+    );
+}
+
+#[test]
 fn markdown_transcript_preserves_messages_and_formats_activity() {
     assert!(render_markdown_transcript(&[]).is_err());
     let user = |message: &str, local_image_paths| {

@@ -21,6 +21,70 @@ use crate::pager_overlay::Overlay;
 use crate::tui;
 
 impl App {
+    pub(super) fn finalize_answer_presentation(
+        &mut self,
+        tui: &mut tui::Tui,
+        turn_id: &str,
+        answer: &str,
+    ) -> Result<()> {
+        let Some(index) = self.transcript_cells.iter().rposition(|cell| {
+            cell.as_any()
+                .downcast_ref::<history_cell::AgentMarkdownCell>()
+                .is_some_and(|cell| {
+                    cell.copy_source().is_some_and(|source| {
+                        source == answer || source.strip_suffix('\n') == Some(answer)
+                    })
+                })
+        }) else {
+            return Ok(());
+        };
+        let Some(cell) = self.transcript_cells[index]
+            .as_any()
+            .downcast_ref::<history_cell::AgentMarkdownCell>()
+        else {
+            return Ok(());
+        };
+        let range = history_cell::completed_activity_range(&self.transcript_cells, index);
+        if cell.is_final_answer() && range.is_empty() {
+            return Ok(());
+        }
+        if !cell.is_final_answer() {
+            let finalized: Arc<dyn HistoryCell> = Arc::new(cell.finalized());
+            self.replace_completed_answer_cells(tui, index..index + 1, finalized);
+        }
+        if !range.is_empty() {
+            let activity: Arc<dyn HistoryCell> =
+                Arc::new(history_cell::IntermediateActivityCell::new(
+                    turn_id,
+                    self.transcript_cells[range.clone()].to_vec(),
+                ));
+            self.replace_completed_answer_cells(tui, range, activity);
+        }
+        if tui.is_owned_screen() {
+            tui.frame_requester().schedule_frame();
+        } else {
+            self.finish_required_stream_reflow(tui)?;
+        }
+        Ok(())
+    }
+
+    fn replace_completed_answer_cells(
+        &mut self,
+        tui: &mut tui::Tui,
+        range: std::ops::Range<usize>,
+        replacement: Arc<dyn HistoryCell>,
+    ) {
+        self.native_history
+            .consolidate(&self.transcript_cells[range.clone()], &replacement);
+        self.transcript_view
+            .replace_group(&self.transcript_cells, range.clone(), &replacement);
+        if let Some(Overlay::Transcript(overlay)) = self.overlay.as_mut() {
+            overlay.regroup_cells(range.clone(), Arc::clone(&replacement));
+        }
+        self.transcript_cells.splice(range, [replacement]);
+        tui.frame_requester().schedule_frame();
+    }
+
     pub(super) fn handle_consolidate_agent_message(
         &mut self,
         tui: &mut tui::Tui,
@@ -109,6 +173,70 @@ impl App {
             }
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod final_answer_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[tokio::test]
+    async fn completion_folds_only_current_activity_and_keeps_the_answer_and_timestamp()
+    -> Result<()> {
+        let mut app = crate::app::test_support::make_test_app().await;
+        let mut tui = crate::tui::test_support::make_test_tui()?;
+        tui.set_owned_screen(true)?;
+        let previous: Arc<dyn HistoryCell> = Arc::new(
+            history_cell::AgentMarkdownCell::new("Previous answer".into(), Path::new("."))
+                .finalized(),
+        );
+        let prompt: Arc<dyn HistoryCell> = Arc::new(history_cell::new_user_prompt(
+            "Current prompt".into(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        ));
+        let progress: Arc<dyn HistoryCell> = Arc::new(history_cell::AgentMarkdownCell::new(
+            "Working on it".into(),
+            Path::new("."),
+        ));
+        let answer: Arc<dyn HistoryCell> = Arc::new(history_cell::AgentMarkdownCell::new(
+            "Done\n".into(),
+            Path::new("."),
+        ));
+        let timestamp: Arc<dyn HistoryCell> =
+            Arc::new(history_cell::FinalMessageSeparator::new(Some(5), None));
+        app.transcript_cells = vec![
+            previous.clone(),
+            prompt.clone(),
+            progress.clone(),
+            answer,
+            timestamp.clone(),
+        ];
+
+        app.finalize_answer_presentation(&mut tui, "current-turn", "missing answer")?;
+        assert_eq!(app.transcript_cells.len(), 5);
+        app.finalize_answer_presentation(&mut tui, "current-turn", "Done")?;
+        assert_eq!(app.transcript_cells.len(), 5);
+        assert!(Arc::ptr_eq(&app.transcript_cells[0], &previous));
+        assert!(Arc::ptr_eq(&app.transcript_cells[1], &prompt));
+        let activity = app.transcript_cells[2]
+            .as_any()
+            .downcast_ref::<history_cell::IntermediateActivityCell>()
+            .unwrap();
+        assert!(Arc::ptr_eq(&activity.cells[0], &progress));
+        let answer = app.transcript_cells[3]
+            .as_any()
+            .downcast_ref::<history_cell::AgentMarkdownCell>()
+            .unwrap();
+        assert!(answer.is_final_answer());
+        assert_eq!(answer.copy_source(), Some("Done\n"));
+        assert!(Arc::ptr_eq(&app.transcript_cells[4], &timestamp));
+        let activity = app.transcript_cells[2].clone();
+        app.finalize_answer_presentation(&mut tui, "current-turn", "Done")?;
+        assert!(Arc::ptr_eq(&app.transcript_cells[2], &activity));
         Ok(())
     }
 }

@@ -74,6 +74,36 @@ pub(super) fn text(buffer: &Buffer) -> String {
 }
 
 #[test]
+fn completed_turn_activity_stays_visible_above_the_answer_divider() {
+    use crate::history_cell::AgentMarkdownCell;
+    use crate::history_cell::ReasoningSummaryCell;
+    use std::path::Path;
+
+    let cells: Vec<Arc<dyn HistoryCell>> = vec![
+        prompt("Check the files"),
+        Arc::new(AgentMarkdownCell::new(
+            "Checking the files.".into(),
+            Path::new("."),
+        )),
+        Arc::new(ReasoningSummaryCell::new(
+            String::new(),
+            "Inspection details".into(),
+            Path::new("."),
+            false,
+        )),
+        Arc::new(AgentMarkdownCell::new("Everything passed.".into(), Path::new(".")).finalized()),
+    ];
+    let mut view = TranscriptView::default();
+    let visible = text(&render(&mut view, &cells, 60, 20));
+    assert!(visible.contains("Checking the files."));
+    assert!(visible.contains("Inspection details"));
+    assert!(visible.contains("Everything passed."));
+    assert_eq!(visible.matches(&"─".repeat(60)).count(), 1);
+    assert!(!visible.contains("Final answer"));
+    assert!(!visible.contains("Intermediate activity"));
+}
+
+#[test]
 fn consecutive_user_prompts_share_one_background_block() {
     use crate::history_cell::AgentMessageCell;
     use crate::history_cell::new_spoken_user_prompt;

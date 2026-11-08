@@ -1183,6 +1183,11 @@ pub(crate) enum AppEvent {
     FollowTranscript,
 
     InsertHistoryCell(Box<dyn HistoryCell>),
+    /// Present the completed answer after all of the turn's history has been committed.
+    FinalizeAnswer {
+        thread_id: ThreadId,
+        answer: String,
+    },
     /// FIFO barrier after the completed turn's history insertions.
     TurnTipReady {
         thread_id: ThreadId,

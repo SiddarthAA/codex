@@ -495,11 +495,24 @@ impl ChatWidget {
                 }
                 self.last_non_retry_error = None;
                 let completion = self.completion_cell(&notification.turn, replay_kind);
+                let final_answer = last_agent_message.as_ref().and_then(|(item, _, text)| {
+                    if matches!(item, ThreadItemPayload::AgentMessage { phase: None, questions: Some(questions), .. } if !questions.is_empty()) {
+                        None
+                    } else {
+                        Some(text.clone())
+                    }
+                });
                 self.on_task_complete(
                     last_agent_message.map(|(_, _, text)| text),
                     completion,
                     replay_kind.is_some(),
                 );
+                if let Some(answer) = final_answer
+                    && let Some(thread_id) = self.thread_id
+                {
+                    self.app_event_tx
+                        .send(AppEvent::FinalizeAnswer { thread_id, answer });
+                }
             }
             TurnStatus::Interrupted => {
                 if replay_kind.is_none() {

@@ -20,6 +20,7 @@ use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::UserInput;
 use codex_protocol::ThreadId;
 use codex_protocol::items::UserMessageItem;
+use codex_protocol::models::MessagePhase;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use ratatui::style::Stylize as _;
 
@@ -275,7 +276,10 @@ fn item_to_cells(
             cells.push(Arc::new(cell.with_async_replies(replies, cwd.as_path())));
         }
         ThreadItemPayload::AgentMessage {
-            text, questions, ..
+            text,
+            questions,
+            phase,
+            ..
         } => {
             let parsed = parse_assistant_markdown(&text, cwd.as_path());
             if !parsed.visible_markdown.trim().is_empty() {
@@ -284,6 +288,10 @@ fn item_to_cells(
                         parsed.visible_markdown,
                         cwd.as_path(),
                         inline_visualization_context,
+                    )
+                    .with_final_answer(
+                        matches!(phase, Some(MessagePhase::FinalAnswer))
+                            || phase.is_none() && questions.as_ref().is_none_or(Vec::is_empty),
                     )
                     .with_questions(questions.as_deref().unwrap_or_default()),
                 ));

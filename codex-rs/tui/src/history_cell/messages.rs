@@ -729,7 +729,6 @@ impl AgentMarkdownCell {
                     0..0,
                     plain_hyperlink_lines(vec![
                         Line::from("─".repeat(usize::from(width))),
-                        Line::from("Final answer".bold()),
                         Line::default(),
                     ]),
                 );

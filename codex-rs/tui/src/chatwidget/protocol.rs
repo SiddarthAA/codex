@@ -510,11 +510,8 @@ impl ChatWidget {
                 if let Some(answer) = final_answer
                     && let Some(thread_id) = self.thread_id
                 {
-                    self.app_event_tx.send(AppEvent::FinalizeAnswer {
-                        thread_id,
-                        turn_id: notification.turn.id.clone(),
-                        answer,
-                    });
+                    self.app_event_tx
+                        .send(AppEvent::FinalizeAnswer { thread_id, answer });
                 }
             }
             TurnStatus::Interrupted => {

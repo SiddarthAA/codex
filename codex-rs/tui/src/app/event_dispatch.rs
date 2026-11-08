@@ -953,9 +953,9 @@ impl App {
             AppEvent::InsertHistoryCell(cell) => {
                 self.insert_history_cell(tui, cell);
             }
-            AppEvent::FinalizeAnswer { thread_id, turn_id, answer } => {
+            AppEvent::FinalizeAnswer { thread_id, answer } => {
                 if self.chat_widget.thread_id() == Some(thread_id) {
-                    self.finalize_answer_presentation(tui, &turn_id, &answer)?;
+                    self.finalize_answer_presentation(tui, &answer)?;
                 }
             }
             AppEvent::TurnTipReady { thread_id, turn_id } => {

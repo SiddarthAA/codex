@@ -74,51 +74,33 @@ pub(super) fn text(buffer: &Buffer) -> String {
 }
 
 #[test]
-fn completed_turn_activity_expands_and_collapses_from_the_keyboard() {
+fn completed_turn_activity_stays_visible_above_the_answer_divider() {
     use crate::history_cell::AgentMarkdownCell;
-    use crate::history_cell::IntermediateActivityCell;
     use crate::history_cell::ReasoningSummaryCell;
     use std::path::Path;
 
     let cells: Vec<Arc<dyn HistoryCell>> = vec![
         prompt("Check the files"),
-        Arc::new(IntermediateActivityCell::new(
-            "turn-one",
-            vec![
-                Arc::new(AgentMarkdownCell::new(
-                    "Checking the files.".into(),
-                    Path::new("."),
-                )),
-                Arc::new(ReasoningSummaryCell::new(
-                    String::new(),
-                    "Inspection details".into(),
-                    Path::new("."),
-                    true,
-                )),
-            ],
+        Arc::new(AgentMarkdownCell::new(
+            "Checking the files.".into(),
+            Path::new("."),
+        )),
+        Arc::new(ReasoningSummaryCell::new(
+            String::new(),
+            "Inspection details".into(),
+            Path::new("."),
+            false,
         )),
         Arc::new(AgentMarkdownCell::new("Everything passed.".into(), Path::new(".")).finalized()),
     ];
     let mut view = TranscriptView::default();
-    let collapsed = text(&render(&mut view, &cells, 60, 20));
-    assert!(collapsed.contains("Final answer"));
-    assert!(collapsed.contains("Everything passed."));
-    assert!(collapsed.contains("Intermediate activity"));
-    assert!(!collapsed.contains("Checking the files."));
-    assert!(!collapsed.contains("Inspection details"));
-
-    view.handle_key(KeyEvent::new(KeyCode::F(4), KeyModifiers::NONE), &cells);
-    view.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &cells);
-    let expanded = text(&render(&mut view, &cells, 60, 20));
-    assert!(expanded.contains("Checking the files."));
-    assert!(expanded.contains("Inspection details"));
-    assert!(expanded.contains("Final answer"));
-
-    view.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &cells);
-    let collapsed_again = text(&render(&mut view, &cells, 60, 20));
-    assert!(!collapsed_again.contains("Checking the files."));
-    assert!(!collapsed_again.contains("Inspection details"));
-    assert!(collapsed_again.contains("Everything passed."));
+    let visible = text(&render(&mut view, &cells, 60, 20));
+    assert!(visible.contains("Checking the files."));
+    assert!(visible.contains("Inspection details"));
+    assert!(visible.contains("Everything passed."));
+    assert_eq!(visible.matches(&"─".repeat(60)).count(), 1);
+    assert!(!visible.contains("Final answer"));
+    assert!(!visible.contains("Intermediate activity"));
 }
 
 #[test]

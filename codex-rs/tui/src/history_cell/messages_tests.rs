@@ -4,6 +4,32 @@ use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 
 #[test]
+fn final_answer_divider_reflows_without_changing_content_or_copy_source() {
+    let source = "The answer is [here](https://example.test/answer).";
+    let original = AgentMarkdownCell::new(source.to_owned(), Path::new("."));
+    let final_answer = original.finalized();
+    for width in [20, 40, 80] {
+        let lines = final_answer.display_lines(width);
+        assert_eq!(lines[0].to_string(), "─".repeat(usize::from(width)));
+        assert_eq!(lines[1].to_string(), "");
+        assert_eq!(&lines[2..], original.display_lines(width));
+        assert!(!lines.iter().any(|line| line.to_string() == "Final answer"));
+        assert_eq!(final_answer.copy_source(), Some(source));
+        assert_eq!(final_answer.raw_lines(), original.raw_lines());
+        assert!(
+            final_answer
+                .display_hyperlink_lines(width)
+                .iter()
+                .any(|line| {
+                    line.hyperlinks
+                        .iter()
+                        .any(|link| link.destination == "https://example.test/answer")
+                })
+        );
+    }
+}
+
+#[test]
 fn user_prompt_urls_keep_destinations_across_widths() {
     let url = "https://example.test/terminal-link-wrapping/solid-octants";
     let placeholder = "[Image #1]";

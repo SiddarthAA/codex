@@ -228,11 +228,6 @@ fn visible_export_items(turns: Vec<Turn>) -> Vec<ThreadItemPayload> {
 
 fn render_markdown_transcript(cells: &[Arc<dyn HistoryCell>]) -> Result<String, String> {
     let mut markdown = String::from("# Codex conversation\n");
-    let cells = cells.iter().flat_map(|cell| {
-        cell.as_any()
-            .downcast_ref::<crate::history_cell::IntermediateActivityCell>()
-            .map_or_else(|| vec![cell], |activity| activity.cells.iter().collect())
-    });
     for cell in cells {
         let lines = if let Some(user) = cell.as_any().downcast_ref::<UserHistoryCell>() {
             let (message, _) =

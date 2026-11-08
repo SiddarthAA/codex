@@ -111,23 +111,6 @@ pub(crate) fn thread_to_transcript_cells(
                 raw_reasoning_visibility,
                 config,
             );
-            if turn.status == codex_app_server_protocol::TurnStatus::Completed
-                && let Some(index) = cells.iter().rposition(|cell| {
-                    cell.as_any()
-                        .downcast_ref::<AgentMarkdownCell>()
-                        .is_some_and(AgentMarkdownCell::is_final_answer)
-                })
-            {
-                let range = crate::history_cell::completed_activity_range(&cells, index);
-                if !range.is_empty() {
-                    let activity: Arc<dyn HistoryCell> =
-                        Arc::new(crate::history_cell::IntermediateActivityCell::new(
-                            &turn.id,
-                            cells[range.clone()].to_vec(),
-                        ));
-                    cells.splice(range, [activity]);
-                }
-            }
             if let Some(error) = turn.error {
                 cells.push(Arc::new(crate::history_cell::new_error_event(
                     error.message,

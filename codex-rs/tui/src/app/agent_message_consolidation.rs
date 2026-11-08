@@ -24,7 +24,6 @@ impl App {
     pub(super) fn finalize_answer_presentation(
         &mut self,
         tui: &mut tui::Tui,
-        turn_id: &str,
         answer: &str,
     ) -> Result<()> {
         let Some(index) = self.transcript_cells.iter().rposition(|cell| {
@@ -44,36 +43,11 @@ impl App {
         else {
             return Ok(());
         };
-        let range = history_cell::completed_activity_range(&self.transcript_cells, index);
-        if cell.is_final_answer() && range.is_empty() {
+        if cell.is_final_answer() {
             return Ok(());
         }
-        if !cell.is_final_answer() {
-            let finalized: Arc<dyn HistoryCell> = Arc::new(cell.finalized());
-            self.replace_completed_answer_cells(tui, index..index + 1, finalized);
-        }
-        if !range.is_empty() {
-            let activity: Arc<dyn HistoryCell> =
-                Arc::new(history_cell::IntermediateActivityCell::new(
-                    turn_id,
-                    self.transcript_cells[range.clone()].to_vec(),
-                ));
-            self.replace_completed_answer_cells(tui, range, activity);
-        }
-        if tui.is_owned_screen() {
-            tui.frame_requester().schedule_frame();
-        } else {
-            self.finish_required_stream_reflow(tui)?;
-        }
-        Ok(())
-    }
-
-    fn replace_completed_answer_cells(
-        &mut self,
-        tui: &mut tui::Tui,
-        range: std::ops::Range<usize>,
-        replacement: Arc<dyn HistoryCell>,
-    ) {
+        let range = index..index + 1;
+        let replacement: Arc<dyn HistoryCell> = Arc::new(cell.finalized());
         self.native_history
             .consolidate(&self.transcript_cells[range.clone()], &replacement);
         self.transcript_view
@@ -82,7 +56,12 @@ impl App {
             overlay.regroup_cells(range.clone(), Arc::clone(&replacement));
         }
         self.transcript_cells.splice(range, [replacement]);
-        tui.frame_requester().schedule_frame();
+        if tui.is_owned_screen() {
+            tui.frame_requester().schedule_frame();
+        } else {
+            self.finish_required_stream_reflow(tui)?;
+        }
+        Ok(())
     }
 
     pub(super) fn handle_consolidate_agent_message(
@@ -183,8 +162,7 @@ mod final_answer_tests {
     use std::path::Path;
 
     #[tokio::test]
-    async fn completion_folds_only_current_activity_and_keeps_the_answer_and_timestamp()
-    -> Result<()> {
+    async fn completion_keeps_activity_visible_and_separates_the_answer() -> Result<()> {
         let mut app = crate::app::test_support::make_test_app().await;
         let mut tui = crate::tui::test_support::make_test_tui()?;
         tui.set_owned_screen(true)?;
@@ -216,17 +194,19 @@ mod final_answer_tests {
             timestamp.clone(),
         ];
 
-        app.finalize_answer_presentation(&mut tui, "current-turn", "missing answer")?;
+        app.finalize_answer_presentation(&mut tui, "missing answer")?;
         assert_eq!(app.transcript_cells.len(), 5);
-        app.finalize_answer_presentation(&mut tui, "current-turn", "Done")?;
+        app.finalize_answer_presentation(&mut tui, "Done")?;
         assert_eq!(app.transcript_cells.len(), 5);
         assert!(Arc::ptr_eq(&app.transcript_cells[0], &previous));
         assert!(Arc::ptr_eq(&app.transcript_cells[1], &prompt));
-        let activity = app.transcript_cells[2]
-            .as_any()
-            .downcast_ref::<history_cell::IntermediateActivityCell>()
-            .unwrap();
-        assert!(Arc::ptr_eq(&activity.cells[0], &progress));
+        assert!(Arc::ptr_eq(&app.transcript_cells[2], &progress));
+        assert!(
+            app.transcript_cells[2]
+                .display_lines(40)
+                .iter()
+                .any(|line| { line.to_string().contains("Working on it") })
+        );
         let answer = app.transcript_cells[3]
             .as_any()
             .downcast_ref::<history_cell::AgentMarkdownCell>()
@@ -234,9 +214,9 @@ mod final_answer_tests {
         assert!(answer.is_final_answer());
         assert_eq!(answer.copy_source(), Some("Done\n"));
         assert!(Arc::ptr_eq(&app.transcript_cells[4], &timestamp));
-        let activity = app.transcript_cells[2].clone();
-        app.finalize_answer_presentation(&mut tui, "current-turn", "Done")?;
-        assert!(Arc::ptr_eq(&app.transcript_cells[2], &activity));
+        let answer = app.transcript_cells[3].clone();
+        app.finalize_answer_presentation(&mut tui, "Done")?;
+        assert!(Arc::ptr_eq(&app.transcript_cells[3], &answer));
         Ok(())
     }
 }

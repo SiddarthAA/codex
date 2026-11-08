@@ -1186,7 +1186,6 @@ pub(crate) enum AppEvent {
     /// Present the completed answer after all of the turn's history has been committed.
     FinalizeAnswer {
         thread_id: ThreadId,
-        turn_id: String,
         answer: String,
     },
     /// FIFO barrier after the completed turn's history insertions.
